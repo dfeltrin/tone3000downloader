@@ -18,6 +18,10 @@ export function enabledCategories(categories) {
   return selected;
 }
 
+export function normalizeUsername(username) {
+  return String(username).trim().toLowerCase();
+}
+
 function pad(number) {
   return String(number).padStart(2, '0');
 }
@@ -165,11 +169,12 @@ export class ApiClient {
   }
 
   async findTones(username, categories) {
+    const normalizedUsername = normalizeUsername(username);
     const tones = [];
     for (let page = 1; ; page += 1) {
-      const query = new URLSearchParams({ creators: username, format: 'nam', architecture: '2', gears: categories.join('_'), page: String(page), page_size: '25', sort: 'newest' });
+      const query = new URLSearchParams({ creators: normalizedUsername, format: 'nam', architecture: '2', gears: categories.join('_'), page: String(page), page_size: '25', sort: 'newest' });
       const result = await this.json(`${API_BASE_URL}/tones/search?${query}`);
-      tones.push(...result.data.filter((tone) => tone.user?.username === username && tone.format === 'nam' && categories.includes(tone.gear)));
+      tones.push(...result.data.filter((tone) => normalizeUsername(tone.user?.username) === normalizedUsername && tone.format === 'nam' && categories.includes(tone.gear)));
       if (page >= result.total_pages) break;
     }
     return tones;

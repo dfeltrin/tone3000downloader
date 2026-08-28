@@ -1,15 +1,15 @@
 # TONE3000 NAM2 Downloader
 
-CLI Node.js per sincronizzare in locale, in sola direzione, i modelli NAM A2 pubblici degli autori configurati su TONE3000.
+Node.js CLI for one-way local synchronization of public NAM A2 models from the configured TONE3000 creators.
 
-## Requisiti
+## Requirements
 
-- Node.js 20 o superiore
-- una API key TONE3000 valida in `secret.json` (il file non viene versionato)
+- Node.js 20 or later
+- A valid TONE3000 API key in `secret.json` (this file is not versioned)
 
-## Configurazione
+## Configuration
 
-Modifica `config.json` per scegliere gli autori e le categorie da sincronizzare. Sono scaricati solo i tipi con valore `true`:
+Edit `config.json` to select creators and categories to synchronize. Only categories set to `true` are downloaded:
 
 ```json
 {
@@ -26,30 +26,32 @@ Modifica `config.json` per scegliere gli autori e le categorie da sincronizzare.
 }
 ```
 
-Per impostare una chiave su un nuovo checkout, copia `secret.json.sample` in `secret.json` e inserisci la chiave. In alternativa è supportata la variabile d'ambiente `TONE3000_API_KEY`, che ha precedenza sul file.
+Creator usernames are normalized to lowercase automatically before querying the API.
 
-## Comandi
+For a new checkout, copy `secret.json.sample` to `secret.json` and enter your key. Alternatively, use the `TONE3000_API_KEY` environment variable, which takes precedence over the file.
+
+## Commands
 
 ```sh
-npm run sync                 # tutti gli utenti configurati
-npm run sync -- --user 2dor  # un solo utente
-npm run sync -- --dry-run    # mostra le azioni senza scrivere
-npm run status               # riepilogo del manifest locale
+npm run sync                 # all configured creators
+npm run sync -- --user 2dor  # one creator only
+npm run sync -- --dry-run    # show actions without writing files
+npm run status               # local manifest summary
 npm test
 ```
 
-## Organizzazione dei file
+## File layout
 
 ```text
-data/users/<autore>/<tipologia>/<titolo tone> [tone-<id>]/<nome modello> [model-<id>].nam
+data/users/<creator>/<category>/<tone title> [tone-<id>]/<model name> [model-<id>].nam
 ```
 
-I caratteri non compatibili con i nomi file vengono normalizzati; gli ID mantengono univoci profili e modelli con lo stesso nome.
+Characters that are incompatible with file names are normalized. IDs keep profiles and models with the same name unique.
 
-## Politica di sincronizzazione
+## Synchronization policy
 
-Il manifest `data/.tone3000-sync.json` registra la versione remota e l'hash SHA-256 di ciascun file scritto. Viene aggiornato atomicamente dopo ogni download o aggiornamento completato, per cui un'interruzione conserva i progressi già eseguiti. La sincronizzazione scarica modelli nuovi o aggiornati sul sito, non cancella mai file locali e non sovrascrive un file modificato localmente: in quest'ultimo caso segnala un conflitto. I download vengono scritti prima in un file temporaneo e poi rinominati atomicamente.
+The `data/.tone3000-sync.json` manifest stores the remote version and SHA-256 hash for every written file. It is updated atomically after every completed download or update, so an interrupted run preserves completed progress. Synchronization downloads new or remotely updated models, never deletes local files, and never overwrites a locally modified file; such cases are reported as conflicts. Downloads are written to a temporary file and then atomically renamed.
 
-Ogni comando `sync` crea anche un riepilogo testuale in `data/logs/YYYY-mm-DD-HH-MM tone3000downloader.log`. Il file annota avvio, autenticazione, ciascuna azione sul modello, errori e riepilogo finale. Se due sessioni iniziano nello stesso minuto, la seconda aggiunge un suffisso numerico per non sovrascrivere il log precedente.
+Every `sync` command also creates a text summary in `data/logs/YYYY-mm-DD-HH-MM tone3000downloader.log`. The file records startup, authentication, every model action, errors, and the final summary. If two sessions start within the same minute, the second file receives a numeric suffix to avoid overwriting the previous log.
 
-La CLI usa gli endpoint autenticati TONE3000 per cercare tone NAM A2 di ogni autore, ottenere l'elenco di modelli A2 e scaricarli singolarmente. Le richieste vengono serializzate a circa 90/minuto per restare sotto il limite API predefinito.
+The CLI uses authenticated TONE3000 endpoints to find each creator's NAM A2 tones, retrieve their A2 model lists, and download models individually. Requests are serialized at roughly 90 per minute to stay within the default API limit.
