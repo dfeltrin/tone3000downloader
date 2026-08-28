@@ -1,0 +1,23 @@
+{
+  "users": [
+    "2dor",
+    "arthm",
+    "jesco",
+    "AmalgamAudio",
+    "signaltheoryaudio",
+    "killianmusicfoundry",
+    "ToneJunkie",
+    "slamminmofo",
+    "OutmodedElectronics",
+    "Deathblossomaudio"
+  ],
+  "categories": {
+    "amp": true,
+    "amp-cab": true,
+    "pedal": false,
+    "outboard": false,
+    "cab": true,
+    "space": false,
+    "experimental": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "tone3000downloader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI per sincronizzare modelli NAM2 pubblici da TONE3000",
+  "scripts": {
+    "start": "node src/cli.js",
+    "sync": "node src/cli.js sync",
+    "status": "node src/cli.js status",
+    "test": "node --test"
+  }
+}
