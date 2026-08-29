@@ -91,6 +91,10 @@ For example, a NAM A2 model by `2dor` is stored as:
 data/User/amp-cab/2dor/UBER.BLUE Lead [model-694998].nam
 ```
 
+Example of the resulting folder structure on macOS:
+
+![Finder view of the downloaded NAM A2 library, organized by category and creator](docs/images/library-layout-macos.png)
+
 ## Synchronization policy
 
 The `data/.tone3000-sync.json` manifest stores the remote version and SHA-256 hash for every written file. File paths are stored relative to `data/`, so the same library works both on the host and inside Docker. The temporary download URL is intentionally not used to decide whether a model changed. The manifest is updated atomically after every completed download or update, so an interrupted run preserves completed progress. Synchronization downloads new or remotely updated models, never deletes local files, and never overwrites a locally modified file; such cases are reported as conflicts. Downloads are written to a temporary file and then atomically renamed.
