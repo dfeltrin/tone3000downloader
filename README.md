@@ -10,7 +10,7 @@
 
 ### English
 
-TONE3000 now hosts tens of thousands of NAM profiles, which is an extraordinary resource but can also be difficult to navigate. Many integrations make this easier for guitarists—for example, direct browsing and previewing from a Headrush pedalboard—but trying hundreds of profiles in a real rig still takes time. A profile that sounds promising in isolation must be evaluated with your own guitar, effects, pedals, monitoring, and playing style.
+tone3000.com now hosts tens of thousands of NAM profiles, which is an extraordinary resource but can also be difficult to navigate. Many integrations make this easier for guitarists—for example, direct browsing and previewing from a Headrush pedalboard—but trying hundreds of profiles in a real rig still takes time. A profile that sounds promising in isolation must be evaluated with your own guitar, effects, pedals, monitoring, and playing style.
 
 After spending time exploring tone3000.com, I found that some creators are genuine must-haves and publish worthwhile new content regularly. Returning to the website every week to search manually for each creator's additions is tedious, even with the available filters.
 
@@ -20,11 +20,11 @@ Modern pedalboards such as Headrush units often have several gigabytes of free s
 
 ### Italiano
 
-Oggi TONE3000 ospita decine di migliaia di profili NAM: una risorsa straordinaria, ma non sempre facile da esplorare. Esistono molte integrazioni che semplificano la vita del chitarrista—ad esempio la consultazione e l’ascolto diretto da una pedaliera Headrush—ma provare centinaia di profili nel proprio rig richiede comunque tempo. Un profilo interessante va valutato con la propria chitarra, gli effetti, i pedalini, il sistema di ascolto e il proprio modo di suonare.
+Oggi tone3000.com ospita decine di migliaia di profili NAM: una risorsa straordinaria, ma non sempre facile da esplorare. Esistono molte integrazioni che semplificano la vita del chitarrista—ad esempio la consultazione e l’ascolto diretto da una pedaliera Headrush—ma provare centinaia di profili nel proprio rig richiede comunque tempo. Un profilo interessante va valutato con la propria chitarra, gli effetti, i pedalini, il sistema di ascolto e il proprio modo di suonare.
 
 Dopo un periodo di esplorazione su tone3000.com, ho capito che alcuni autori sono dei veri *must-have* e pubblicano nuovi contenuti validi con regolarità. Tornare ogni settimana sul portale per cercare manualmente le novità di ciascun autore è però fastidioso, anche usando i filtri disponibili.
 
-Questa piccola utility nasce per risolvere il problema. Partendo da una lista selezionata di autori, sincronizza in modo differenziale i loro profili NAM A2 in una libreria locale: scarica solo i modelli nuovi o aggiornati sul portale, senza dover riscaricare ogni volta l’intero archivio. Si ottiene così una raccolta completa e aggiornata per ogni autore selezionato, senza dover ogni volta cercare manualmente le novità sul sito.
+Questa piccola utility nasce per risolvere il problema. Partendo da una lista selezionata di autori, sincronizza in modo differenziale i loro profili NAM A2 in una cartella locale: scarica solo i modelli nuovi o aggiornati sul portale, senza dover riscaricare ogni volta l’intero archivio. Si ottiene così una raccolta completa e aggiornata per ogni autore selezionato, senza dover ogni volta cercare manualmente le novità sul sito.
 
 Le pedaliere moderne, come quelle della famiglia Headrush, spesso hanno diversi gigabyte di spazio libero. Mantenere una raccolta locale ampia rende più semplice caricare centinaia di profili NAM e provarli direttamente nel proprio rig, insieme agli effetti che si usano abitualmente. Questo progetto scarica esclusivamente profili NAM A2.
 
@@ -32,9 +32,11 @@ Le pedaliere moderne, come quelle della famiglia Headrush, spesso hanno diversi 
 
 Install [Docker Desktop](https://www.docker.com/products/docker-desktop/); Node.js is not required on the host.
 
-Copy `.env.example` to `.env`, then set `TONE3000_API_KEY` to your TONE3000 secret key. The `.env` file is ignored by Git and contains both the key and the comma-separated `TONE3000_USERS` creator list.
+Tested on macOS with Docker Desktop.
 
-All supported TONE3000 categories are synchronized automatically: `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space`, and `experimental`.
+Copy `.env.example` to `.env`, then set `TONE3000_API_KEY` to your tone3000.com secret key. The `.env` file is ignored by Git and contains both the key and the comma-separated `TONE3000_USERS` creator list.
+
+All supported tone3000.com categories are synchronized automatically: `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space`, and `experimental`.
 
 ```sh
 cp .env.example .env
@@ -46,7 +48,7 @@ docker compose run --rm tone3000downloader status
 
 Downloaded files and the manifest are persisted in the local `data/` folder. Logs also have their own explicit bind mount at `data/logs/`, so they persist even when the temporary `docker compose run --rm` container is removed.
 
-## Obtain a TONE3000 secret key
+## Obtain a tone3000.com secret key
 
 1. Sign in to your TONE3000 account.
 2. Open **Settings**, then **API Keys**.
