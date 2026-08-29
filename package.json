@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CLI per sincronizzare modelli NAM2 pubblici da TONE3000",
+  "description": "CLI for synchronizing public NAM A2 models from TONE3000",
   "scripts": {
     "start": "node src/cli.js",
     "sync": "node src/cli.js sync",

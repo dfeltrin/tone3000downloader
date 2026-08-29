@@ -10,15 +10,15 @@ const command = args[0] ?? 'sync';
 let sessionLogger;
 
 function usage() {
-  console.log('Uso: node src/cli.js <sync|status> [--user USER] [--dry-run]');
+  console.log('Usage: node src/cli.js <sync|status> [--user USER] [--dry-run]');
 }
 
 async function readJson(file) {
   try {
     return JSON.parse(await readFile(file, 'utf8'));
   } catch (error) {
-    if (error.code === 'ENOENT') throw new Error(`File mancante: ${file}`);
-    throw new Error(`JSON non valido in ${file}: ${error.message}`);
+    if (error.code === 'ENOENT') throw new Error(`Missing file: ${file}`);
+    throw new Error(`Invalid JSON in ${file}: ${error.message}`);
   }
 }
 
@@ -28,35 +28,35 @@ async function main() {
   if (command === 'status') {
     const manifest = await readManifest(path.join(dataDirectory, '.tone3000-sync.json'));
     const entries = Object.values(manifest.models);
-    console.log(`Modelli registrati: ${entries.length}`);
+    console.log(`Registered models: ${entries.length}`);
     for (const entry of entries) console.log(entry.path);
     return;
   }
-  if (command !== 'sync') throw new Error(`Comando sconosciuto: ${command}`);
+  if (command !== 'sync') throw new Error(`Unknown command: ${command}`);
 
   const config = await readJson(path.join(root, 'config.json'));
   if (!Array.isArray(config.users) || config.users.some((user) => typeof user !== 'string' || !user.trim())) {
-    throw new Error('config.json deve contenere un array non vuoto di username in "users"');
+    throw new Error('config.json must contain a non-empty array of usernames in "users"');
   }
   const categories = enabledCategories(config.categories);
   const userIndex = args.indexOf('--user');
-  if (userIndex !== -1 && !args[userIndex + 1]) throw new Error('--user richiede uno username');
+  if (userIndex !== -1 && !args[userIndex + 1]) throw new Error('--user requires a username');
   const users = userIndex === -1 ? config.users : [args[userIndex + 1]];
   const dryRun = args.includes('--dry-run');
   sessionLogger = await createSessionLogger(dataDirectory);
-  await sessionLogger.log(`Sessione avviata${dryRun ? ' (dry-run)' : ''}; utenti: ${users.join(', ')}; categorie: ${categories.join(', ')}`);
+  await sessionLogger.log(`Session started${dryRun ? ' (dry-run)' : ''}; users: ${users.join(', ')}; categories: ${categories.join(', ')}`);
   const secret = process.env.TONE3000_API_KEY ? {} : await readJson(path.join(root, 'secret.json'));
   const apiKey = process.env.TONE3000_API_KEY ?? secret.apiKey ?? secret.api_key;
   const client = new ApiClient({ apiKey });
   await client.validateCredentials();
-  await sessionLogger.log('Autenticazione API riuscita.');
+  await sessionLogger.log('API authentication succeeded.');
   const summary = await synchronize({ client, users, categories, dataDirectory, dryRun, log: sessionLogger.log });
-  await sessionLogger.log(`Riepilogo: scaricati ${summary.downloaded}, aggiornati ${summary.updated}, saltati ${summary.skipped}, modificati localmente ${summary.localModified}, conflitti ${summary.conflicts}, errori ${summary.errors}.`);
-  if (summary.errors > 0) process.exitCode = 1;
+  await sessionLogger.log(`Summary: downloaded ${summary.downloaded}, updated ${summary.updated}, skipped ${summary.skipped}, locally modified ${summary.localModified}, conflicts ${summary.conflicts}, errors ${summary.errors}; layout migration: moved ${summary.layout.moved}, deduplicated ${summary.layout.deduplicated}, conflicts ${summary.layout.conflicts}, missing primary files ${summary.layout.missing}, errors ${summary.layout.errors}.`);
+  if (summary.errors > 0 || summary.layout.errors > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {
-  const message = `Errore: ${error.message}`;
+  const message = `Error: ${error.message}`;
   if (sessionLogger) {
     sessionLogger.log(message).catch(() => console.error(message));
   } else {

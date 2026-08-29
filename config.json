@@ -9,6 +9,7 @@
     "thetonescientist",
     "Blackstar",
     "Andertons",
+    "MaestrodiMusica",
     "arthm",
     "jesco",
     "AmalgamAudio",
@@ -23,10 +24,10 @@
   "categories": {
     "amp": true,
     "amp-cab": true,
-    "pedal": false,
-    "outboard": false,
+    "pedal": true,
+    "outboard": true,
     "cab": true,
-    "space": false,
+    "space": true,
     "experimental": true
   }
 }

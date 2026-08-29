@@ -1,20 +1,21 @@
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export const API_BASE_URL = 'https://www.tone3000.com/api/v1';
 export const TONE3000_CATEGORIES = ['amp', 'amp-cab', 'pedal', 'outboard', 'cab', 'space', 'experimental'];
+export const USERS_DIRECTORY = 'User';
 
 export function enabledCategories(categories) {
   if (!categories || typeof categories !== 'object' || Array.isArray(categories)) {
-    throw new Error('config.json deve contenere l’oggetto "categories" con flag true/false');
+    throw new Error('config.json must contain a "categories" object with true/false flags');
   }
   for (const [category, enabled] of Object.entries(categories)) {
-    if (!TONE3000_CATEGORIES.includes(category)) throw new Error(`Categoria non supportata: ${category}`);
-    if (typeof enabled !== 'boolean') throw new Error(`Il flag della categoria "${category}" deve essere true o false`);
+    if (!TONE3000_CATEGORIES.includes(category)) throw new Error(`Unsupported category: ${category}`);
+    if (typeof enabled !== 'boolean') throw new Error(`The "${category}" category flag must be true or false`);
   }
   const selected = TONE3000_CATEGORIES.filter((category) => categories[category] === true);
-  if (selected.length === 0) throw new Error('Abilita almeno una categoria in config.json');
+  if (selected.length === 0) throw new Error('Enable at least one category in config.json');
   return selected;
 }
 
@@ -77,9 +78,37 @@ export function safeName(value, fallback = 'untitled') {
 export function modelPath(dataDirectory, tone, model) {
   const author = safeName(tone.user?.username, 'unknown-author');
   const gear = safeName(tone.gear, 'unknown-gear');
-  const toneDirectory = `${safeName(tone.title)} [tone-${tone.id}]`;
   const fileName = `${safeName(model.name, 'model')} [model-${model.id}].nam`;
-  return path.join(dataDirectory, 'users', author, gear, toneDirectory, fileName);
+  return path.join(dataDirectory, USERS_DIRECTORY, gear, author, fileName);
+}
+
+function entrySourceDetails(dataDirectory, entry) {
+  const relativeParts = path.relative(path.join(dataDirectory, USERS_DIRECTORY), entry.path).split(path.sep);
+  const isLegacyUserDirectory = relativeParts.length >= 3;
+  const fileName = relativeParts.at(-1) ?? '';
+  return {
+    author: entry.author ?? (isLegacyUserDirectory ? relativeParts[0] : fileName.split('_', 1)[0]) ?? 'unknown-author',
+    gear: entry.gear ?? (isLegacyUserDirectory ? relativeParts[1] : relativeParts[0]) ?? 'unknown-gear',
+  };
+}
+
+export function primaryModelPath(dataDirectory, entry) {
+  const { author, gear } = entrySourceDetails(dataDirectory, entry);
+  const safeAuthor = safeName(author, 'unknown-author');
+  const fileName = modelFileWithoutUserName(safeAuthor, path.basename(entry.path));
+  return path.join(dataDirectory, USERS_DIRECTORY, safeName(gear, 'unknown-gear'), safeAuthor, fileName);
+}
+
+function modelFileWithoutUserName(author, fileName) {
+  const prefix = `${author}_`;
+  const withoutLegacyPrefix = fileName.startsWith(prefix) ? fileName.slice(prefix.length) : fileName;
+  const userPrefix = `[${author}] `;
+  const withoutUserPrefix = withoutLegacyPrefix.startsWith(userPrefix) ? withoutLegacyPrefix.slice(userPrefix.length) : withoutLegacyPrefix;
+  const extension = path.extname(withoutUserPrefix) || '.nam';
+  const stem = withoutUserPrefix.slice(0, -extension.length);
+  const suffix = ` [${author}]`;
+  const modelName = stem.endsWith(suffix) ? stem.slice(0, -suffix.length) : stem;
+  return `${modelName}${extension}`;
 }
 
 export function remoteSignature(tone, model) {
@@ -114,12 +143,12 @@ export async function readManifest(manifestPath) {
   try {
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     if (manifest.version !== 1 || typeof manifest.models !== 'object') {
-      throw new Error('versione o struttura non supportata');
+      throw new Error('unsupported version or structure');
     }
     return manifest;
   } catch (error) {
     if (error.code === 'ENOENT') return { version: 1, models: {} };
-    throw new Error(`Manifest non valido (${error.message})`);
+    throw new Error(`Invalid manifest (${error.message})`);
   }
 }
 
@@ -137,7 +166,7 @@ export class ApiClient {
   #minimumIntervalMs;
 
   constructor({ apiKey, fetchImpl = fetch, minimumIntervalMs = 670 }) {
-    if (!apiKey) throw new Error('API key TONE3000 mancante');
+    if (!apiKey) throw new Error('Missing TONE3000 API key');
     this.#apiKey = apiKey;
     this.#fetch = fetchImpl;
     this.#minimumIntervalMs = minimumIntervalMs;
@@ -156,7 +185,7 @@ export class ApiClient {
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
-      throw new Error(`Richiesta TONE3000 fallita (${response.status}) per ${new URL(url).pathname}`);
+      throw new Error(`TONE3000 request failed (${response.status}) for ${new URL(url).pathname}`);
     }
   }
 
@@ -219,7 +248,14 @@ export async function syncModel({ client, dataDirectory, manifest, tone, model, 
     await writeFile(temporary, content);
     const sha256 = createHash('sha256').update(content).digest('hex');
     await rename(temporary, destination);
-    manifest.models[String(model.id)] = { signature, path: destination, sha256, syncedAt: new Date().toISOString() };
+    manifest.models[String(model.id)] = {
+      signature,
+      path: destination,
+      sha256,
+      author: tone.user?.username ?? 'unknown-author',
+      gear: tone.gear ?? 'unknown-gear',
+      syncedAt: new Date().toISOString(),
+    };
     if (saveManifest) await saveManifest(manifest);
     return { action: previous ? 'updated' : 'downloaded', destination };
   } finally {
@@ -227,13 +263,81 @@ export async function syncModel({ client, dataDirectory, manifest, tone, model, 
   }
 }
 
+async function removeEmptyAncestors(directory, stopAt) {
+  let current = directory;
+  while (current.startsWith(stopAt) && current !== stopAt) {
+    try {
+      await rmdir(current);
+      current = path.dirname(current);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        current = path.dirname(current);
+        continue;
+      }
+      return;
+    }
+  }
+}
+
+export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = false, saveManifest, log = () => {} }) {
+  const summary = { moved: 0, deduplicated: 0, skipped: 0, missing: 0, conflicts: 0, errors: 0 };
+  for (const [modelId, entry] of Object.entries(manifest.models)) {
+    try {
+      if (!entry.path || !(await fileExists(entry.path))) {
+        summary.missing += 1;
+        await log(`layout-missing-primary: model ${modelId}`);
+        continue;
+      }
+      const source = entry.path;
+      const sourceDetails = entrySourceDetails(dataDirectory, entry);
+      const destination = primaryModelPath(dataDirectory, entry);
+      if (source === destination) {
+        summary.skipped += 1;
+        continue;
+      }
+      const exists = await fileExists(destination);
+      if (exists && (await sha256File(source)) !== (await sha256File(destination))) {
+        summary.conflicts += 1;
+        await log(`layout-conflict: model ${modelId}: ${destination}`);
+        continue;
+      }
+      if (dryRun) {
+        summary.moved += 1;
+        await log(`layout-would-move: ${destination}`);
+        continue;
+      }
+      if (exists) {
+        await rm(source);
+        summary.deduplicated += 1;
+      } else {
+        await mkdir(path.dirname(destination), { recursive: true });
+        await rename(source, destination);
+        summary.moved += 1;
+      }
+      entry.path = destination;
+      entry.author = sourceDetails.author;
+      entry.gear = sourceDetails.gear;
+      delete entry.allPath;
+      delete entry.allSha256;
+      if (saveManifest) await saveManifest(manifest);
+      await removeEmptyAncestors(path.dirname(source), path.join(dataDirectory, USERS_DIRECTORY, safeName(sourceDetails.gear), safeName(sourceDetails.author)));
+      await log(`layout-${exists ? 'deduplicated' : 'moved'}: ${destination}`);
+    } catch (error) {
+      summary.errors += 1;
+        await log(`layout-error: model ${modelId}: ${error.message}`);
+    }
+  }
+  return summary;
+}
+
 export async function synchronize({ client, users, categories, dataDirectory, dryRun = false, log = () => {} }) {
   const manifestPath = path.join(dataDirectory, '.tone3000-sync.json');
   const manifest = await readManifest(manifestPath);
   const saveManifest = dryRun ? undefined : () => writeManifest(manifestPath, manifest);
   const summary = { downloaded: 0, updated: 0, skipped: 0, localModified: 0, conflicts: 0, errors: 0 };
+  summary.layout = await migratePrimaryLibrary({ dataDirectory, manifest, dryRun, saveManifest, log });
   for (const username of users) {
-    await log(`Autore: ${username}`);
+    await log(`Creator: ${username}`);
     const tones = await client.findTones(username, categories);
     for (const tone of tones) {
       const models = await client.listNam2Models(tone.id);
@@ -247,7 +351,7 @@ export async function synchronize({ client, users, categories, dataDirectory, dr
           await log(`${result.action}: ${result.destination}`);
         } catch (error) {
           summary.errors += 1;
-          await log(`error: modello ${model.id}: ${error.message}`);
+          await log(`error: model ${model.id}: ${error.message}`);
         }
       }
     }
