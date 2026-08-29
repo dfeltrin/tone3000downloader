@@ -1,6 +1,6 @@
 {
   "name": "tone3000downloader",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "CLI for synchronizing public NAM A2 models from TONE3000",
