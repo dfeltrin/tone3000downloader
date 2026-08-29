@@ -1,36 +1,69 @@
 # TONE3000 NAM2 Downloader
 
-Node.js CLI for one-way local synchronization of public NAM A2 models from the configured TONE3000 creators.
+> **Disclaimer:** This is an independent, experimental project. It is not affiliated with, endorsed by, sponsored by, or supported by TONE3000 or tone3000.com.
 
-Developed with [Codex](https://openai.com/codex/).
+> **API use:** This utility uses the official TONE3000 API to retrieve tone metadata and download NAM A2 models. It does not scrape the tone3000.com website or parse its web pages.
 
-## Requirements
+> **Uso delle API:** Questa utility utilizza le API ufficiali di TONE3000 per recuperare i metadati dei tone e scaricare i modelli NAM A2. Non effettua scraping del sito tone3000.com né analizza le sue pagine web.
 
-- Node.js 20 or later
-- A valid TONE3000 API key in `secret.json` (this file is not versioned)
+## Why this exists / Perché esiste
 
-## Configuration
+### English
 
-Edit `config.json` to select creators and categories to synchronize. Only categories set to `true` are downloaded:
+TONE3000 now hosts tens of thousands of NAM profiles, which is an extraordinary resource but can also be difficult to navigate. Many integrations make this easier for guitarists—for example, direct browsing and previewing from a Headrush pedalboard—but trying hundreds of profiles in a real rig still takes time. A profile that sounds promising in isolation must be evaluated with your own guitar, effects, pedals, monitoring, and playing style.
 
-```json
-{
-  "users": ["2dor", "jesco"],
-  "categories": {
-    "amp": true,
-    "amp-cab": true,
-    "pedal": true,
-    "outboard": true,
-    "cab": true,
-    "space": true,
-    "experimental": true
-  }
-}
+After spending time exploring tone3000.com, I found that some creators are genuine must-haves and publish worthwhile new content regularly. Returning to the website every week to search manually for each creator's additions is tedious, even with the available filters.
+
+This small utility was created to solve that problem. Starting from a curated list of creators, it differentially synchronizes their NAM A2 profiles to a local library: it downloads only new or remotely updated models, instead of downloading everything again. The result is a complete, up-to-date archive for each selected creator, without repeatedly searching the website for new releases.
+
+Modern pedalboards such as Headrush units often have several gigabytes of free storage. Keeping a broad local collection makes it practical to load hundreds of NAM profiles and audition them directly inside a familiar rig, alongside the effects you already use. This project downloads NAM A2 profiles only.
+
+### Italiano
+
+Oggi TONE3000 ospita decine di migliaia di profili NAM: una risorsa straordinaria, ma non sempre facile da esplorare. Esistono molte integrazioni che semplificano la vita del chitarrista—ad esempio la consultazione e l’ascolto diretto da una pedaliera Headrush—ma provare centinaia di profili nel proprio rig richiede comunque tempo. Un profilo interessante va valutato con la propria chitarra, gli effetti, i pedalini, il sistema di ascolto e il proprio modo di suonare.
+
+Dopo un periodo di esplorazione su tone3000.com, ho capito che alcuni autori sono dei veri *must-have* e pubblicano nuovi contenuti validi con regolarità. Tornare ogni settimana sul portale per cercare manualmente le novità di ciascun autore è però fastidioso, anche usando i filtri disponibili.
+
+Questa piccola utility nasce per risolvere il problema. Partendo da una lista selezionata di autori, sincronizza in modo differenziale i loro profili NAM A2 in una libreria locale: scarica solo i modelli nuovi o aggiornati sul portale, senza dover riscaricare ogni volta l’intero archivio. Si ottiene così una raccolta completa e aggiornata per ogni autore selezionato, senza dover ogni volta cercare manualmente le novità sul sito.
+
+Le pedaliere moderne, come quelle della famiglia Headrush, spesso hanno diversi gigabyte di spazio libero. Mantenere una raccolta locale ampia rende più semplice caricare centinaia di profili NAM e provarli direttamente nel proprio rig, insieme agli effetti che si usano abitualmente. Questo progetto scarica esclusivamente profili NAM A2.
+
+## Run with Docker (recommended)
+
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/); Node.js is not required on the host.
+
+Copy `.env.example` to `.env`, then set `TONE3000_API_KEY` to your TONE3000 secret key. The `.env` file is ignored by Git and contains both the key and the comma-separated `TONE3000_USERS` creator list.
+
+All supported TONE3000 categories are synchronized automatically: `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space`, and `experimental`.
+
+```sh
+cp .env.example .env
+docker compose run --rm tone3000downloader              # synchronize all configured creators
+docker compose run --rm tone3000downloader sync --user 2dor
+docker compose run --rm tone3000downloader sync --dry-run
+docker compose run --rm tone3000downloader status
 ```
 
-Supported categories are `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space`, and `experimental`. Creator usernames are normalized to lowercase automatically before querying the API.
+Downloaded files and the manifest are persisted in the local `data/` folder. Logs also have their own explicit bind mount at `data/logs/`, so they persist even when the temporary `docker compose run --rm` container is removed.
 
-For a new checkout, copy `secret.json.sample` to `secret.json` and enter your key. Alternatively, use the `TONE3000_API_KEY` environment variable, which takes precedence over the file.
+## Obtain a TONE3000 secret key
+
+1. Sign in to your TONE3000 account.
+2. Open **Settings**, then **API Keys**.
+3. Generate a **Secret Key** (its current format begins with `t3k_cs_`). Copy it immediately and store it securely: TONE3000 treats it as a server-only credential.
+4. Put it in `.env` without quotes:
+
+   ```dotenv
+   TONE3000_API_KEY=t3k_cs_your-secret-key
+   ```
+
+Do not commit, share, or embed this value in an app distributed to other people. If it is exposed, revoke or regenerate it in TONE3000 Settings and update `.env`. TONE3000 also documents OAuth for user-facing integrations; this local downloader uses a single secret key instead.
+
+Official reference: [TONE3000 API documentation](https://www.tone3000.com/api) and [API Terms of Service](https://www.tone3000.com/api/terms).
+
+## Native Node.js usage
+
+Node.js 20 or later is needed only when running the CLI outside Docker. Set `TONE3000_USERS` and `TONE3000_API_KEY` in the environment. Creator usernames are normalized to lowercase automatically before querying the API. The CLI also supports an unversioned `secret.json` containing `apiKey` for backward compatibility.
 
 ## Commands
 
@@ -58,7 +91,7 @@ data/User/amp-cab/2dor/UBER.BLUE Lead [model-694998].nam
 
 ## Synchronization policy
 
-The `data/.tone3000-sync.json` manifest stores the remote version and SHA-256 hash for every written file. It is updated atomically after every completed download or update, so an interrupted run preserves completed progress. Synchronization downloads new or remotely updated models, never deletes local files, and never overwrites a locally modified file; such cases are reported as conflicts. Downloads are written to a temporary file and then atomically renamed.
+The `data/.tone3000-sync.json` manifest stores the remote version and SHA-256 hash for every written file. File paths are stored relative to `data/`, so the same library works both on the host and inside Docker. The temporary download URL is intentionally not used to decide whether a model changed. The manifest is updated atomically after every completed download or update, so an interrupted run preserves completed progress. Synchronization downloads new or remotely updated models, never deletes local files, and never overwrites a locally modified file; such cases are reported as conflicts. Downloads are written to a temporary file and then atomically renamed.
 
 Before downloads begin, older primary layouts are migrated to the current category-and-creator layout without redownloading the files. This includes removing tone-title intermediate folders and converting legacy filename formats. The migration is recorded atomically in the manifest.
 

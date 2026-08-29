@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { ApiClient, createSessionLogger, enabledCategories, readManifest, synchronize } from './lib.js';
+import { ApiClient, createSessionLogger, readManifest, synchronize, TONE3000_CATEGORIES } from './lib.js';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -22,6 +22,11 @@ async function readJson(file) {
   }
 }
 
+function usersFromEnvironment(value) {
+  if (value === undefined) return null;
+  return value.split(',').map((user) => user.trim()).filter(Boolean);
+}
+
 async function main() {
   if (command === '--help' || command === '-h') return usage();
   const dataDirectory = path.join(root, 'data');
@@ -34,14 +39,14 @@ async function main() {
   }
   if (command !== 'sync') throw new Error(`Unknown command: ${command}`);
 
-  const config = await readJson(path.join(root, 'config.json'));
-  if (!Array.isArray(config.users) || config.users.some((user) => typeof user !== 'string' || !user.trim())) {
-    throw new Error('config.json must contain a non-empty array of usernames in "users"');
+  const configuredUsers = usersFromEnvironment(process.env.TONE3000_USERS);
+  if (!Array.isArray(configuredUsers) || configuredUsers.length === 0 || configuredUsers.some((user) => typeof user !== 'string' || !user.trim())) {
+    throw new Error('Configure at least one non-empty username in TONE3000_USERS');
   }
-  const categories = enabledCategories(config.categories);
+  const categories = TONE3000_CATEGORIES;
   const userIndex = args.indexOf('--user');
   if (userIndex !== -1 && !args[userIndex + 1]) throw new Error('--user requires a username');
-  const users = userIndex === -1 ? config.users : [args[userIndex + 1]];
+  const users = userIndex === -1 ? configuredUsers : [args[userIndex + 1]];
   const dryRun = args.includes('--dry-run');
   sessionLogger = await createSessionLogger(dataDirectory);
   await sessionLogger.log(`Session started${dryRun ? ' (dry-run)' : ''}; users: ${users.join(', ')}; categories: ${categories.join(', ')}`);
@@ -51,7 +56,7 @@ async function main() {
   await client.validateCredentials();
   await sessionLogger.log('API authentication succeeded.');
   const summary = await synchronize({ client, users, categories, dataDirectory, dryRun, log: sessionLogger.log });
-  await sessionLogger.log(`Summary: downloaded ${summary.downloaded}, updated ${summary.updated}, skipped ${summary.skipped}, locally modified ${summary.localModified}, conflicts ${summary.conflicts}, errors ${summary.errors}; layout migration: moved ${summary.layout.moved}, deduplicated ${summary.layout.deduplicated}, conflicts ${summary.layout.conflicts}, missing primary files ${summary.layout.missing}, errors ${summary.layout.errors}.`);
+  await sessionLogger.log(`Summary: downloaded ${summary.downloaded}, updated ${summary.updated}, skipped ${summary.skipped}, locally modified ${summary.localModified}, conflicts ${summary.conflicts}, errors ${summary.errors}; layout migration: moved ${summary.layout.moved}, deduplicated ${summary.layout.deduplicated}, normalized paths ${summary.layout.normalized}, conflicts ${summary.layout.conflicts}, missing primary files ${summary.layout.missing}, errors ${summary.layout.errors}.`);
   if (summary.errors > 0 || summary.layout.errors > 0) process.exitCode = 1;
 }
 

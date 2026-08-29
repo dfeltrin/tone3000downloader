@@ -1,0 +1,6 @@
+.git
+.env
+secret.json
+data
+node_modules
+*.part

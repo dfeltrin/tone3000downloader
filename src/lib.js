@@ -6,19 +6,6 @@ export const API_BASE_URL = 'https://www.tone3000.com/api/v1';
 export const TONE3000_CATEGORIES = ['amp', 'amp-cab', 'pedal', 'outboard', 'cab', 'space', 'experimental'];
 export const USERS_DIRECTORY = 'User';
 
-export function enabledCategories(categories) {
-  if (!categories || typeof categories !== 'object' || Array.isArray(categories)) {
-    throw new Error('config.json must contain a "categories" object with true/false flags');
-  }
-  for (const [category, enabled] of Object.entries(categories)) {
-    if (!TONE3000_CATEGORIES.includes(category)) throw new Error(`Unsupported category: ${category}`);
-    if (typeof enabled !== 'boolean') throw new Error(`The "${category}" category flag must be true or false`);
-  }
-  const selected = TONE3000_CATEGORIES.filter((category) => categories[category] === true);
-  if (selected.length === 0) throw new Error('Enable at least one category in config.json');
-  return selected;
-}
-
 export function normalizeUsername(username) {
   return String(username).trim().toLowerCase();
 }
@@ -82,10 +69,29 @@ export function modelPath(dataDirectory, tone, model) {
   return path.join(dataDirectory, USERS_DIRECTORY, gear, author, fileName);
 }
 
+function manifestRelativePath(dataDirectory, filePath) {
+  const relativePath = path.relative(dataDirectory, filePath);
+  if (relativePath.startsWith(`..${path.sep}`) || relativePath === '..' || path.isAbsolute(relativePath)) {
+    throw new Error(`Model path is outside the data directory: ${filePath}`);
+  }
+  return relativePath;
+}
+
+function entryFilePath(dataDirectory, entry) {
+  if (!entry.path) return null;
+  if (!path.isAbsolute(entry.path)) return path.join(dataDirectory, entry.path);
+  const relativeToData = path.relative(dataDirectory, entry.path);
+  if (!relativeToData.startsWith(`..${path.sep}`) && relativeToData !== '..' && !path.isAbsolute(relativeToData)) return entry.path;
+  const parts = entry.path.split(/[\\/]/);
+  const userDirectoryIndex = parts.lastIndexOf(USERS_DIRECTORY);
+  return userDirectoryIndex === -1 ? entry.path : path.join(dataDirectory, ...parts.slice(userDirectoryIndex));
+}
+
 function entrySourceDetails(dataDirectory, entry) {
-  const relativeParts = path.relative(path.join(dataDirectory, USERS_DIRECTORY), entry.path).split(path.sep);
+  const sourcePath = entryFilePath(dataDirectory, entry) ?? '';
+  const relativeParts = path.relative(path.join(dataDirectory, USERS_DIRECTORY), sourcePath).split(path.sep);
   const isLegacyUserDirectory = relativeParts.length >= 3;
-  const fileName = relativeParts.at(-1) ?? '';
+  const fileName = path.basename(sourcePath);
   return {
     author: entry.author ?? (isLegacyUserDirectory ? relativeParts[0] : fileName.split('_', 1)[0]) ?? 'unknown-author',
     gear: entry.gear ?? (isLegacyUserDirectory ? relativeParts[1] : relativeParts[0]) ?? 'unknown-gear',
@@ -95,7 +101,7 @@ function entrySourceDetails(dataDirectory, entry) {
 export function primaryModelPath(dataDirectory, entry) {
   const { author, gear } = entrySourceDetails(dataDirectory, entry);
   const safeAuthor = safeName(author, 'unknown-author');
-  const fileName = modelFileWithoutUserName(safeAuthor, path.basename(entry.path));
+  const fileName = modelFileWithoutUserName(safeAuthor, path.basename(entryFilePath(dataDirectory, entry) ?? ''));
   return path.join(dataDirectory, USERS_DIRECTORY, safeName(gear, 'unknown-gear'), safeAuthor, fileName);
 }
 
@@ -121,8 +127,18 @@ export function remoteSignature(tone, model) {
     modelUpdatedAt: model.updated_at ?? null,
     name: model.name,
     architecture: model.architecture_version ?? null,
-    url: model.model_url,
   });
+}
+
+function signaturesMatch(previousSignature, currentSignature) {
+  if (previousSignature === currentSignature) return true;
+  try {
+    const previous = JSON.parse(previousSignature);
+    delete previous.url;
+    return JSON.stringify(previous) === currentSignature;
+  } catch {
+    return false;
+  }
 }
 
 export async function sha256File(filePath) {
@@ -166,7 +182,7 @@ export class ApiClient {
   #minimumIntervalMs;
 
   constructor({ apiKey, fetchImpl = fetch, minimumIntervalMs = 670 }) {
-    if (!apiKey) throw new Error('Missing TONE3000 API key');
+    if (!apiKey) throw new Error('Missing TONE3000 Secret Key');
     this.#apiKey = apiKey;
     this.#fetch = fetchImpl;
     this.#minimumIntervalMs = minimumIntervalMs;
@@ -228,14 +244,21 @@ export class ApiClient {
 
 export async function syncModel({ client, dataDirectory, manifest, tone, model, dryRun, saveManifest }) {
   const destination = modelPath(dataDirectory, tone, model);
+  const destinationPath = manifestRelativePath(dataDirectory, destination);
   const signature = remoteSignature(tone, model);
   const previous = manifest.models[String(model.id)];
   const exists = await fileExists(destination);
   let localHash = null;
   if (exists) localHash = await sha256File(destination);
 
-  if (previous?.signature === signature && previous.path === destination && exists) {
-    if (previous.sha256 === localHash) return { action: 'skipped', destination };
+  if (previous && signaturesMatch(previous.signature, signature) && entryFilePath(dataDirectory, previous) === destination && exists) {
+    if (previous.sha256 === localHash) {
+      if (previous.signature !== signature || previous.path !== destinationPath) {
+        previous.signature = signature;
+        previous.path = destinationPath;
+      }
+      return { action: 'skipped', destination };
+    }
     return { action: 'local-modified', destination };
   }
   if (exists && (!previous || previous.sha256 !== localHash)) return { action: 'conflict', destination };
@@ -250,7 +273,7 @@ export async function syncModel({ client, dataDirectory, manifest, tone, model, 
     await rename(temporary, destination);
     manifest.models[String(model.id)] = {
       signature,
-      path: destination,
+      path: destinationPath,
       sha256,
       author: tone.user?.username ?? 'unknown-author',
       gear: tone.gear ?? 'unknown-gear',
@@ -280,18 +303,25 @@ async function removeEmptyAncestors(directory, stopAt) {
 }
 
 export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = false, saveManifest, log = () => {} }) {
-  const summary = { moved: 0, deduplicated: 0, skipped: 0, missing: 0, conflicts: 0, errors: 0 };
+  const summary = { moved: 0, deduplicated: 0, skipped: 0, normalized: 0, missing: 0, conflicts: 0, errors: 0 };
+  let normalizedManifest = false;
   for (const [modelId, entry] of Object.entries(manifest.models)) {
     try {
-      if (!entry.path || !(await fileExists(entry.path))) {
+      const source = entryFilePath(dataDirectory, entry);
+      if (!source || !(await fileExists(source))) {
         summary.missing += 1;
         await log(`layout-missing-primary: model ${modelId}`);
         continue;
       }
-      const source = entry.path;
       const sourceDetails = entrySourceDetails(dataDirectory, entry);
       const destination = primaryModelPath(dataDirectory, entry);
+      const destinationPath = manifestRelativePath(dataDirectory, destination);
       if (source === destination) {
+        if (entry.path !== destinationPath) {
+          entry.path = destinationPath;
+          normalizedManifest = true;
+          summary.normalized += 1;
+        }
         summary.skipped += 1;
         continue;
       }
@@ -314,7 +344,7 @@ export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = 
         await rename(source, destination);
         summary.moved += 1;
       }
-      entry.path = destination;
+      entry.path = destinationPath;
       entry.author = sourceDetails.author;
       entry.gear = sourceDetails.gear;
       delete entry.allPath;
@@ -327,6 +357,7 @@ export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = 
         await log(`layout-error: model ${modelId}: ${error.message}`);
     }
   }
+  if (normalizedManifest && !dryRun && saveManifest) await saveManifest(manifest);
   return summary;
 }
 
