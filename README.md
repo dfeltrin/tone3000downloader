@@ -4,20 +4,16 @@
 
 > **API use:** This utility uses the official TONE3000 API to retrieve tone metadata and download NAM A2 models. It does not scrape the tone3000.com website or parse its web pages.
 
-> **Uso delle API:** Questa utility utilizza le API ufficiali di TONE3000 per recuperare i metadati dei tone e scaricare i modelli NAM A2. Non effettua scraping del sito tone3000.com né analizza le sue pagine web.
+> **🇮🇹 Uso delle API:** Questa utility utilizza le API ufficiali di TONE3000 per recuperare i metadati dei tone e scaricare i modelli NAM A2. Non effettua scraping del sito tone3000.com né analizza le sue pagine web.
 
-## Why this exists / Perché esiste
-
-### English
+## Why this exists
 
 tone3000.com now hosts tens of thousands of NAM profiles, which is an extraordinary resource but can also be difficult to navigate. Many integrations make this easier for guitarists—for example, direct browsing and previewing from a Headrush pedalboard—but trying hundreds of profiles in a real rig still takes time.
 After spending time exploring tone3000.com, I found that some creators are genuine must-haves and publish worthwhile new content regularly. Returning to the website every week to search manually for each creator's additions is tedious, even with the available filters.
 This small utility was created to solve that problem. Starting from a curated list of creators, it differentially synchronizes their NAM A2 profiles to a local library: it downloads only new or remotely updated models, instead of downloading everything again. The result is a complete, up-to-date archive for each selected creator, without repeatedly searching the website for new releases.
 Modern pedalboards such as Headrush units often have several gigabytes of free storage. Keeping a broad local collection makes it practical to load hundreds of NAM profiles and audition them directly inside a familiar rig, alongside the effects you already use. This project downloads NAM A2 profiles only.
 
-### Italiano
-
-Oggi tone3000.com ospita decine di migliaia di profili NAM: una risorsa straordinaria, ma non sempre facile da esplorare. Esistono molte integrazioni che semplificano la vita del chitarrista—ad esempio la consultazione e l’ascolto diretto da una pedaliera Headrush—ma provare centinaia di profili nel proprio rig richiede comunque tempo.
+🇮🇹 Oggi tone3000.com ospita decine di migliaia di profili NAM: una risorsa straordinaria, ma non sempre facile da esplorare. Esistono molte integrazioni che semplificano la vita del chitarrista—ad esempio la consultazione e l’ascolto diretto da una pedaliera Headrush—ma provare centinaia di profili nel proprio rig richiede comunque tempo.
 Dopo un periodo di esplorazione su tone3000.com, ho capito che alcuni autori sono dei veri *must-have* e pubblicano nuovi contenuti validi con regolarità. Tornare ogni settimana sul portale per cercare manualmente le novità di ciascun autore è però fastidioso, anche usando i filtri disponibili.
 Questa piccola utility nasce per risolvere il problema. Partendo da una lista selezionata di autori, sincronizza in modo differenziale i loro profili NAM A2 in una cartella locale: scarica solo i modelli nuovi o aggiornati sul portale, senza dover riscaricare ogni volta l’intero archivio. Si ottiene così una raccolta completa e aggiornata per ogni autore selezionato, senza dover ogni volta cercare manualmente le novità sul sito.
 Le pedaliere moderne, come quelle della famiglia Headrush, spesso hanno diversi gigabyte di spazio libero. Mantenere una raccolta locale ampia rende più semplice caricare centinaia di profili NAM e provarli direttamente nel proprio rig, insieme agli effetti che si usano abitualmente. Questo progetto scarica esclusivamente profili NAM A2.
@@ -31,6 +27,21 @@ Tested on macOS with Docker Desktop.
 Copy `.env.example` to `.env`, then set `TONE3000_API_KEY` to your tone3000.com secret key. The `.env` file is ignored by Git and contains both the key and the comma-separated `TONE3000_USERS` creator list.
 
 All supported tone3000.com categories are synchronized automatically: `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space`, and `experimental`.
+
+## Configure the creators to synchronize
+
+Edit the `TONE3000_USERS` line in `.env`. It is the complete list of TONE3000 creator usernames to keep synchronized, separated by commas:
+
+```dotenv
+TONE3000_USERS=2dor,tonejunkie,amalgamaudio
+```
+
+Add a username to include a new creator; remove one to stop checking that creator on future runs. Usernames are trimmed and normalized to lowercase before calling the API, so `ToneJunkie` and `tonejunkie` refer to the same account. Keep each username only once.
+
+Removing a username does not delete its previously downloaded files: synchronization is one-way and never removes local models. The `--user` command-line option is useful for a one-off sync of a single creator and does not modify `.env`.
+
+🇮🇹 Modifica la riga `TONE3000_USERS` nel file `.env`: contiene l’elenco completo degli username TONE3000 che vuoi mantenere sincronizzati, separati da virgole. Aggiungi un username per includere un nuovo autore; rimuovilo per non controllarlo più nelle sincronizzazioni future. Gli username vengono ripuliti e convertiti automaticamente in minuscolo prima della chiamata API, quindi `ToneJunkie` e `tonejunkie` indicano lo stesso account. Inserisci ogni username una sola volta.
+Rimuovere un username non cancella i file già scaricati: la sincronizzazione è a senso unico e non elimina mai modelli locali. L’opzione `--user` serve per una sincronizzazione occasionale di un singolo autore e non modifica `.env`.
 
 ```sh
 cp .env.example .env
