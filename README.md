@@ -1,5 +1,9 @@
 # TONE3000 NAM2 Downloader
 
+<p align="center">
+  <img src="docs/images/tone3000downloader-icon.svg" width="128" alt="TONE3000 NAM2 Downloader icon">
+</p>
+
 > **Disclaimer:** This is an independent, experimental project. It is not affiliated with, endorsed by, sponsored by, or supported by TONE3000 or tone3000.com.
 
 > **API use:** This utility uses the official TONE3000 API to retrieve tone metadata and download NAM A2 models. It does not scrape the tone3000.com website or parse its web pages.
