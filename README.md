@@ -2,6 +2,8 @@
 
 Node.js CLI for one-way local synchronization of public NAM A2 models from the configured TONE3000 creators.
 
+Developed with [Codex](https://openai.com/codex/).
+
 ## Requirements
 
 - Node.js 20 or later
