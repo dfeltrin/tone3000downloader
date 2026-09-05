@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createSessionLogger, fileExists, modelPath, migratePrimaryLibrary, normalizeUsername, primaryModelPath, remoteSignature, safeName, sessionLogFilename, syncModel } from '../src/lib.js';
+import { archiveCreators, createSessionLogger, fileExists, modelPath, migratePrimaryLibrary, normalizeUsername, primaryModelPath, remoteSignature, safeName, sessionLogFilename, syncModel } from '../src/lib.js';
 
 const tone = { id: 12, title: 'Clean / Lead', gear: 'amp-cab', updated_at: '2026-01-01', user: { username: '2dor' } };
 const model = { id: 99, name: 'A2: Main', updated_at: '2026-01-01', architecture_version: '2', model_url: 'https://download.test/99.nam' };
@@ -58,6 +58,37 @@ test('syncModel skips a model when an old manifest has an absolute path and temp
   assert.equal(downloads, 1);
   assert.equal(entry.path, path.relative(dataDirectory, first.destination));
   assert.equal(entry.signature, remoteSignature(tone, model));
+});
+
+test('archiveCreators moves selected creators and updates their manifest entries', async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), 'tone3000-archive-test-'));
+  const archivedModel = path.join(dataDirectory, 'User', 'amp', 'Jesco', 'Archived model [model-1].nam');
+  const activeModel = path.join(dataDirectory, 'User', 'amp', '2dor', 'Active model [model-2].nam');
+  await mkdir(path.dirname(archivedModel), { recursive: true });
+  await mkdir(path.dirname(activeModel), { recursive: true });
+  await writeFile(archivedModel, 'archive-me');
+  await writeFile(activeModel, 'keep-active');
+  const manifest = {
+    version: 1,
+    models: {
+      1: { path: path.relative(dataDirectory, archivedModel), sha256: 'unused', archived: true },
+      2: { path: path.relative(dataDirectory, activeModel), sha256: 'unused' },
+    },
+  };
+  let saves = 0;
+
+  const summary = await archiveCreators({ dataDirectory, manifest, users: ['jesco'], saveManifest: async () => { saves += 1; } });
+  const destination = path.join(dataDirectory, 'Archived', 'amp', 'Jesco', 'Archived model [model-1].nam');
+
+  assert.equal(summary.moved, 1);
+  assert.equal(summary.manifestUpdated, 1);
+  assert.equal(saves, 1);
+  assert.equal(await fileExists(archivedModel), false);
+  assert.equal(await readFile(destination, 'utf8'), 'archive-me');
+  assert.equal(await readFile(activeModel, 'utf8'), 'keep-active');
+  assert.equal(manifest.models[1].path, path.relative(dataDirectory, destination));
+  assert.equal(manifest.models[1].archived, true);
+  assert.equal(manifest.models[2].archived, undefined);
 });
 
 test('migratePrimaryLibrary flattens the primary structure without redownloading', async () => {

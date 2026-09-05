@@ -47,8 +47,29 @@ Removing a username does not delete its previously downloaded files: synchroniza
 🇮🇹 Modifica la riga `TONE3000_USERS` nel file `.env`: contiene l’elenco completo degli username TONE3000 che vuoi mantenere sincronizzati, separati da virgole. Aggiungi un username per includere un nuovo autore; rimuovilo per non controllarlo più nelle sincronizzazioni future. Gli username vengono ripuliti e convertiti automaticamente in minuscolo prima della chiamata API, quindi `ToneJunkie` e `tonejunkie` indicano lo stesso account. Inserisci ogni username una sola volta.
 Rimuovere un username non cancella i file già scaricati: la sincronizzazione è a senso unico e non elimina mai modelli locali. L’opzione `--user` serve per una sincronizzazione occasionale di un singolo autore e non modifica `.env`.
 
+## Archive creators / 🇮🇹 Archiviare autori
+
+Use the optional `ARCHIVED` variable in `.env` for creators whose existing library you want to retain but no longer synchronize:
+
+```dotenv
+ARCHIVED=jesco,oldcreator
+```
+
+At the start of the next `sync`, every matching creator folder is moved from `data/User/<category>/<creator>/` to `data/Archived/<category>/<creator>/`. The category-and-creator structure is preserved, the manifest is updated, and archived creators are excluded from remote synchronization. Nothing is deleted. If the destination already contains a file with the same name, identical files are deduplicated; different files are preserved and recorded as conflicts in the session log.
+
+Usa la variabile opzionale `ARCHIVED` in `.env` per gli autori di cui vuoi conservare la libreria già scaricata, ma che non vuoi più sincronizzare:
+
+```dotenv
+ARCHIVED=jesco,oldcreator
+```
+
+All’avvio della successiva `sync`, ogni cartella dell’autore viene spostata da `data/User/<categoria>/<autore>/` a `data/Archived/<categoria>/<autore>/`. La struttura categoria/autore viene mantenuta, il manifest viene aggiornato e gli autori archiviati vengono esclusi dalla sincronizzazione remota. Non viene eliminato alcun file. Se la destinazione contiene già un file con lo stesso nome, i file identici vengono deduplicati; file differenti vengono conservati e registrati come conflitti nel log di sessione.
+
 ```sh
 cp .env.example .env
+./go.sh                                      # synchronize all configured creators in the foreground
+./go.sh sync --dry-run                       # preview the changes without writing files
+./go.sh status                                # display the local manifest
 docker compose run --rm tone3000downloader              # synchronize all configured creators
 docker compose run --rm tone3000downloader sync --user 2dor
 docker compose run --rm tone3000downloader sync --dry-run

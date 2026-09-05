@@ -6,6 +6,7 @@ services:
     environment:
       TONE3000_API_KEY: ${TONE3000_API_KEY:?Set TONE3000_API_KEY in .env}
       TONE3000_USERS: ${TONE3000_USERS:?Set TONE3000_USERS in .env}
+      ARCHIVED: ${ARCHIVED:-}
     volumes:
       - ./data:/app/data
       - ./data/logs:/app/data/logs

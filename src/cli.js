@@ -46,18 +46,21 @@ async function main() {
   const categories = TONE3000_CATEGORIES;
   const userIndex = args.indexOf('--user');
   if (userIndex !== -1 && !args[userIndex + 1]) throw new Error('--user requires a username');
-  const users = userIndex === -1 ? configuredUsers : [args[userIndex + 1]];
+  const archivedUsers = usersFromEnvironment(process.env.ARCHIVED) ?? [];
+  const archivedUsernames = new Set(archivedUsers.map((user) => user.toLowerCase()));
+  const requestedUsers = userIndex === -1 ? configuredUsers : [args[userIndex + 1]];
+  const users = requestedUsers.filter((user) => !archivedUsernames.has(user.toLowerCase()));
   const dryRun = args.includes('--dry-run');
   sessionLogger = await createSessionLogger(dataDirectory);
-  await sessionLogger.log(`Session started${dryRun ? ' (dry-run)' : ''}; users: ${users.join(', ')}; categories: ${categories.join(', ')}`);
+  await sessionLogger.log(`Session started${dryRun ? ' (dry-run)' : ''}; users: ${users.join(', ') || 'none'}; archived users: ${archivedUsers.join(', ') || 'none'}; categories: ${categories.join(', ')}`);
   const secret = process.env.TONE3000_API_KEY ? {} : await readJson(path.join(root, 'secret.json'));
   const apiKey = process.env.TONE3000_API_KEY ?? secret.apiKey ?? secret.api_key;
   const client = new ApiClient({ apiKey });
   await client.validateCredentials();
   await sessionLogger.log('API authentication succeeded.');
-  const summary = await synchronize({ client, users, categories, dataDirectory, dryRun, log: sessionLogger.log });
-  await sessionLogger.log(`Summary: downloaded ${summary.downloaded}, updated ${summary.updated}, skipped ${summary.skipped}, locally modified ${summary.localModified}, conflicts ${summary.conflicts}, errors ${summary.errors}; layout migration: moved ${summary.layout.moved}, deduplicated ${summary.layout.deduplicated}, normalized paths ${summary.layout.normalized}, conflicts ${summary.layout.conflicts}, missing primary files ${summary.layout.missing}, errors ${summary.layout.errors}.`);
-  if (summary.errors > 0 || summary.layout.errors > 0) process.exitCode = 1;
+  const summary = await synchronize({ client, users, archivedUsers, categories, dataDirectory, dryRun, log: sessionLogger.log });
+  await sessionLogger.log(`Summary: downloaded ${summary.downloaded}, updated ${summary.updated}, skipped ${summary.skipped}, locally modified ${summary.localModified}, conflicts ${summary.conflicts}, errors ${summary.errors}; archive: moved ${summary.archive.moved}, deduplicated ${summary.archive.deduplicated}, conflicts ${summary.archive.conflicts}, manifest entries ${summary.archive.manifestUpdated}, errors ${summary.archive.errors}; layout migration: moved ${summary.layout.moved}, deduplicated ${summary.layout.deduplicated}, normalized paths ${summary.layout.normalized}, conflicts ${summary.layout.conflicts}, missing primary files ${summary.layout.missing}, errors ${summary.layout.errors}.`);
+  if (summary.errors > 0 || summary.archive.errors > 0 || summary.layout.errors > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {

@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, readdir, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export const API_BASE_URL = 'https://www.tone3000.com/api/v1';
 export const TONE3000_CATEGORIES = ['amp', 'amp-cab', 'pedal', 'outboard', 'cab', 'space', 'experimental'];
 export const USERS_DIRECTORY = 'User';
+export const ARCHIVED_DIRECTORY = 'Archived';
 
 export function normalizeUsername(username) {
   return String(username).trim().toLowerCase();
@@ -302,10 +303,119 @@ async function removeEmptyAncestors(directory, stopAt) {
   }
 }
 
+function isWithinDirectory(filePath, directory) {
+  const relativePath = path.relative(directory, filePath);
+  return relativePath !== '' && !relativePath.startsWith(`..${path.sep}`) && relativePath !== '..' && !path.isAbsolute(relativePath);
+}
+
+async function mergeArchiveDirectory(source, destination, { dryRun, log }) {
+  const summary = { moved: 0, deduplicated: 0, conflicts: 0 };
+  for (const item of await readdir(source, { withFileTypes: true })) {
+    const sourcePath = path.join(source, item.name);
+    const destinationPath = path.join(destination, item.name);
+    const destinationExists = await fileExists(destinationPath);
+    if (!destinationExists) {
+      if (!dryRun) await rename(sourcePath, destinationPath);
+      summary.moved += 1;
+      continue;
+    }
+    const destinationInfo = await stat(destinationPath);
+    if (item.isDirectory() && destinationInfo.isDirectory()) {
+      const nested = await mergeArchiveDirectory(sourcePath, destinationPath, { dryRun, log });
+      summary.moved += nested.moved;
+      summary.deduplicated += nested.deduplicated;
+      summary.conflicts += nested.conflicts;
+      if (!dryRun) await rmdir(sourcePath).catch((error) => {
+        if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error;
+      });
+      continue;
+    }
+    if (item.isFile() && destinationInfo.isFile() && (await sha256File(sourcePath)) === (await sha256File(destinationPath))) {
+      if (!dryRun) await rm(sourcePath);
+      summary.deduplicated += 1;
+      continue;
+    }
+    summary.conflicts += 1;
+    await log(`archive-conflict: ${sourcePath}`);
+  }
+  return summary;
+}
+
+async function archiveManifestEntries({ dataDirectory, manifest, archivedUsers }) {
+  const usersRoot = path.join(dataDirectory, USERS_DIRECTORY);
+  const archivedRoot = path.join(dataDirectory, ARCHIVED_DIRECTORY);
+  let updated = 0;
+  for (const entry of Object.values(manifest.models)) {
+    const source = entryFilePath(dataDirectory, entry);
+    if (!source || !isWithinDirectory(source, usersRoot)) continue;
+    const relativePath = path.relative(usersRoot, source);
+    const [category, author] = relativePath.split(path.sep);
+    if (!category || !author || !archivedUsers.has(normalizeUsername(author))) continue;
+    const destination = path.join(archivedRoot, relativePath);
+    if ((await fileExists(destination)) && !(await fileExists(source))) {
+      entry.path = manifestRelativePath(dataDirectory, destination);
+      entry.archived = true;
+      updated += 1;
+    }
+  }
+  return updated;
+}
+
+export async function archiveCreators({ dataDirectory, manifest, users, dryRun = false, saveManifest, log = () => {} }) {
+  const archivedUsers = new Set(users.map(normalizeUsername));
+  const summary = { moved: 0, deduplicated: 0, conflicts: 0, manifestUpdated: 0, errors: 0 };
+  if (archivedUsers.size === 0) return summary;
+  const usersRoot = path.join(dataDirectory, USERS_DIRECTORY);
+  const archivedRoot = path.join(dataDirectory, ARCHIVED_DIRECTORY);
+  let categories;
+  try {
+    categories = await readdir(usersRoot, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return summary;
+    throw error;
+  }
+  for (const category of categories.filter((item) => item.isDirectory())) {
+    const categoryPath = path.join(usersRoot, category.name);
+    for (const author of await readdir(categoryPath, { withFileTypes: true })) {
+      if (!author.isDirectory() || !archivedUsers.has(normalizeUsername(author.name))) continue;
+      const source = path.join(categoryPath, author.name);
+      const destination = path.join(archivedRoot, category.name, author.name);
+      try {
+        if (!(await fileExists(destination))) {
+          if (!dryRun) {
+            await mkdir(path.dirname(destination), { recursive: true });
+            await rename(source, destination);
+          }
+          summary.moved += 1;
+          await log(`archive-${dryRun ? 'would-move' : 'moved'}: ${source} -> ${destination}`);
+          continue;
+        }
+        const merged = await mergeArchiveDirectory(source, destination, { dryRun, log });
+        summary.moved += merged.moved;
+        summary.deduplicated += merged.deduplicated;
+        summary.conflicts += merged.conflicts;
+        if (!dryRun) await rmdir(source).catch((error) => {
+          if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error;
+        });
+        await log(`archive-merged: ${source} -> ${destination}`);
+      } catch (error) {
+        summary.errors += 1;
+        await log(`archive-error: ${source}: ${error.message}`);
+      }
+    }
+  }
+  if (!dryRun) {
+    summary.manifestUpdated = await archiveManifestEntries({ dataDirectory, manifest, archivedUsers });
+    if (summary.manifestUpdated > 0 && saveManifest) await saveManifest(manifest);
+  }
+  return summary;
+}
+
 export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = false, saveManifest, log = () => {} }) {
   const summary = { moved: 0, deduplicated: 0, skipped: 0, normalized: 0, missing: 0, conflicts: 0, errors: 0 };
   let normalizedManifest = false;
   for (const [modelId, entry] of Object.entries(manifest.models)) {
+    if (entry.archived) continue;
     try {
       const source = entryFilePath(dataDirectory, entry);
       if (!source || !(await fileExists(source))) {
@@ -361,11 +471,12 @@ export async function migratePrimaryLibrary({ dataDirectory, manifest, dryRun = 
   return summary;
 }
 
-export async function synchronize({ client, users, categories, dataDirectory, dryRun = false, log = () => {} }) {
+export async function synchronize({ client, users, archivedUsers = [], categories, dataDirectory, dryRun = false, log = () => {} }) {
   const manifestPath = path.join(dataDirectory, '.tone3000-sync.json');
   const manifest = await readManifest(manifestPath);
   const saveManifest = dryRun ? undefined : () => writeManifest(manifestPath, manifest);
   const summary = { downloaded: 0, updated: 0, skipped: 0, localModified: 0, conflicts: 0, errors: 0 };
+  summary.archive = await archiveCreators({ dataDirectory, manifest, users: archivedUsers, dryRun, saveManifest, log });
   summary.layout = await migratePrimaryLibrary({ dataDirectory, manifest, dryRun, saveManifest, log });
   for (const username of users) {
     await log(`Creator: ${username}`);
